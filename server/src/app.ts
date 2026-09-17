@@ -44,6 +44,8 @@ import {
 } from "./routes/instance-database-backups.js";
 import { llmRoutes } from "./routes/llms.js";
 import { authRoutes } from "./routes/auth.js";
+import { samlRoutes } from "./routes/saml.js";
+import { loadConfig } from "./config.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { pluginRoutes } from "./routes/plugins.js";
@@ -202,6 +204,12 @@ export async function createApp(
   if (opts.betterAuthHandler) {
     app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
+  
+  const config = loadConfig();
+  if (config.samlEnabled) {
+    app.use("/api/auth", samlRoutes(db));
+  }
+
   app.use(llmRoutes(db));
 
   const hostServicesDisposers = new Map<string, () => void>();

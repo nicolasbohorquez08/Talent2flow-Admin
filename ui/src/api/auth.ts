@@ -129,6 +129,10 @@ export const authApi = {
     authPatch("/profile", input, (payload) => currentUserProfileSchema.parse(payload)),
 
   signOut: async () => {
+    if (import.meta.env.VITE_SSO_ENABLED === "true") {
+      window.location.href = "/api/auth/saml/logout";
+      return new Promise(() => {});
+    }
     await authPost("/sign-out", {});
   },
 };

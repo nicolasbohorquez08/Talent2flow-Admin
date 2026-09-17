@@ -176,6 +176,27 @@ export function AuthPage() {
                   ? "Sign In"
                   : "Create Account"}
             </Button>
+            {import.meta.env.VITE_SSO_ENABLED === "true" && (
+              <>
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-border"></div>
+                  <span className="text-xs text-muted-foreground font-medium uppercase">or</span>
+                  <div className="flex-1 h-px bg-border"></div>
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit"
+                    onClick={() => {
+                      window.location.href = "/api/auth/saml/login";
+                    }}
+                  >
+                    Continue with SSO
+                  </Button>
+                </div>
+              </>
+            )}
           </form>
 
           <div className="mt-5 text-sm text-muted-foreground">

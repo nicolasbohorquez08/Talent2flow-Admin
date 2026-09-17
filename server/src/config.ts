@@ -87,6 +87,14 @@ export interface Config {
   heartbeatSchedulerIntervalMs: number;
   companyDeletionEnabled: boolean;
   telemetryEnabled: boolean;
+  samlEnabled: boolean;
+  samlIdpEntryPoint: string | undefined;
+  samlIdpIssuer: string | undefined;
+  samlIdpCert: string | undefined;
+  samlIdpSloUrl: string | undefined;
+  samlSpEntityId: string | undefined;
+  samlSpAcsUrl: string | undefined;
+  samlSpSloUrl: string | undefined;
 }
 
 function detectTailnetBindHost(): string | undefined {
@@ -333,5 +341,13 @@ export function loadConfig(): Config {
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
+    samlEnabled: process.env.SAML_ENABLED === "true",
+    samlIdpEntryPoint: process.env.SAML_IDP_ENTRY_POINT,
+    samlIdpIssuer: process.env.SAML_IDP_ISSUER,
+    samlIdpCert: process.env.SAML_IDP_CERT,
+    samlIdpSloUrl: process.env.SAML_IDP_SLO_URL,
+    samlSpEntityId: process.env.SAML_SP_ENTITY_ID,
+    samlSpAcsUrl: process.env.SAML_SP_ACS_URL,
+    samlSpSloUrl: process.env.SAML_SP_SLO_URL,
   };
 }
