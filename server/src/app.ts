@@ -201,13 +201,13 @@ export async function createApp(
     }),
   );
   app.use("/api/auth", authRoutes(db));
-  if (opts.betterAuthHandler) {
-    app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
-  }
   
   const config = loadConfig();
   if (config.samlEnabled) {
     app.use("/api/auth", samlRoutes(db));
+  }
+  if (opts.betterAuthHandler) {
+    app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
 
   app.use(llmRoutes(db));
