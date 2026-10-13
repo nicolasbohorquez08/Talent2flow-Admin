@@ -204,6 +204,7 @@ export async function createApp(
   
   const config = loadConfig();
   if (config.samlEnabled) {
+    app.use("/api/auth/saml", express.urlencoded({ extended: false }));
     app.use("/api/auth", samlRoutes(db));
   }
   if (opts.betterAuthHandler) {
