@@ -4,6 +4,7 @@ import { Strategy, Profile } from "@node-saml/passport-saml";
 import crypto from "crypto";
 import { eq, and } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { createHmac } from "node:crypto";
 import { authUsers, authAccounts, authSessions } from "@paperclipai/db";
 import { loadConfig } from "../config.js";
 import { deriveAuthCookiePrefix, shouldDisableSecureAuthCookies } from "../auth/better-auth.js";
@@ -145,7 +146,10 @@ export function samlRoutes(db: Db): Router {
 
         const cookieName = disableSecureCookies ? `${cookiePrefix}.session_token` : `__Secure-${cookiePrefix}.session_token`;
         
-        res.cookie(cookieName, sessionToken, {
+        const authSecret = process.env.BETTER_AUTH_SECRET ?? process.env.PAPERCLIP_AGENT_JWT_SECRET ?? "";
+        const cookieSignature = createHmac("sha256", authSecret).update(sessionToken).digest("base64");
+
+        res.cookie(cookieName, `${sessionToken}.${cookieSignature}`, {
           httpOnly: true,
           secure: !disableSecureCookies,
           sameSite: "lax",
@@ -179,7 +183,9 @@ export function samlRoutes(db: Db): Router {
     });
     
     const cookieName = disableSecureCookies ? `${cookiePrefix}.session_token` : `__Secure-${cookiePrefix}.session_token`;
-    const sessionToken = req.cookies[cookieName];
+    const rawCookie = req.cookies[cookieName] as string | undefined;
+    // La cookie viene firmada: "<token>.<firma>". El token es un UUID (sin puntos).
+    const sessionToken = rawCookie ? rawCookie.split(".")[0] : undefined;
 
     let isSso = false;
     if (sessionToken) {
@@ -205,6 +211,11 @@ export function samlRoutes(db: Db): Router {
   });
 
   router.post("/saml/slo", (req, res) => {
+    res.redirect("/");
+  });
+
+  // Azure responde al logout con binding HTTP-Redirect (GET)
+  router.get("/saml/slo", (req, res) => {
     res.redirect("/");
   });
 
