@@ -183,7 +183,16 @@ export function samlRoutes(db: Db): Router {
     });
     
     const cookieName = disableSecureCookies ? `${cookiePrefix}.session_token` : `__Secure-${cookiePrefix}.session_token`;
-    const rawCookie = req.cookies[cookieName] as string | undefined;
+    // El Admin no usa cookie-parser: leer la cabecera Cookie manualmente.
+    const cookieEntry = (req.headers.cookie ?? "")
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`));
+    let rawCookie: string | undefined;
+    if (cookieEntry) {
+      const v = cookieEntry.slice(cookieName.length + 1);
+      try { rawCookie = decodeURIComponent(v); } catch { rawCookie = v; }
+    }
     // La cookie viene firmada: "<token>.<firma>". El token es un UUID (sin puntos).
     const sessionToken = rawCookie ? rawCookie.split(".")[0] : undefined;
 
