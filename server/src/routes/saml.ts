@@ -181,8 +181,9 @@ export function samlRoutes(db: Db): Router {
       authBaseUrlMode: config.authBaseUrlMode,
       authPublicBaseUrl: config.authPublicBaseUrl,
     });
-    
+
     const cookieName = disableSecureCookies ? `${cookiePrefix}.session_token` : `__Secure-${cookiePrefix}.session_token`;
+
     // El Admin no usa cookie-parser: leer la cabecera Cookie manualmente.
     const cookieEntry = (req.headers.cookie ?? "")
       .split(";")
@@ -196,27 +197,47 @@ export function samlRoutes(db: Db): Router {
     // La cookie viene firmada: "<token>.<firma>". El token es un UUID (sin puntos).
     const sessionToken = rawCookie ? rawCookie.split(".")[0] : undefined;
 
-    let isSso = false;
-    if (sessionToken) {
-      const sessions = await db.select().from(authSessions).where(eq(authSessions.token, sessionToken));
-      if (sessions.length > 0) {
-        const accounts = await db.select().from(authAccounts).where(
-          and(eq(authAccounts.userId, sessions[0].userId), eq(authAccounts.providerId, "saml_azure"))
-        );
-        if (accounts.length > 0) {
-          isSso = true;
+    let samlUser: { nameID: string; nameIDFormat: string; sessionIndex?: string } | null = null;
+    try {
+      if (sessionToken) {
+        const sessions = await db.select().from(authSessions).where(eq(authSessions.token, sessionToken));
+        if (sessions.length > 0) {
+          const accounts = await db.select().from(authAccounts).where(
+            and(eq(authAccounts.userId, sessions[0].userId), eq(authAccounts.providerId, "saml_azure"))
+          );
+          if (accounts.length > 0 && accounts[0].accountId) {
+            samlUser = {
+              nameID: accounts[0].accountId,
+              nameIDFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+              sessionIndex: accounts[0].accessToken ?? undefined,
+            };
+          }
         }
+        await db.delete(authSessions).where(eq(authSessions.token, sessionToken));
       }
-      await db.delete(authSessions).where(eq(authSessions.token, sessionToken));
+    } catch (err) {
+      console.error("SAML logout: error revocando sesion local:", err);
     }
 
-    res.clearCookie(cookieName, { path: "/" });
+    res.clearCookie(cookieName, { path: "/", secure: !disableSecureCookies, httpOnly: true, sameSite: "lax" });
 
-    if (isSso && config.samlIdpSloUrl) {
-      res.redirect(config.samlIdpSloUrl);
-    } else {
-      res.redirect("/");
+    // SSO: construir LogoutRequest (SAMLRequest) y redirigir a Azure
+    if (samlUser && config.samlIdpSloUrl) {
+      try {
+        (strategy as any).logout({ user: samlUser, query: req.query }, (err: Error | null, url?: string) => {
+          if (err || !url) {
+            console.error("SAML logout: no se pudo construir LogoutRequest:", err);
+            return res.redirect("/");
+          }
+          return res.redirect(url);
+        });
+        return;
+      } catch (err) {
+        console.error("SAML logout: excepcion construyendo LogoutRequest:", err);
+      }
     }
+
+    res.redirect("/");
   });
 
   router.post("/saml/slo", (req, res) => {
