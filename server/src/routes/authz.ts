@@ -57,7 +57,7 @@ export function assertCompanyAccess(req: Request, companyId: string) {
   }
   if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
     const allowedCompanies = req.actor.companyIds ?? [];
-    if (!allowedCompanies.includes(companyId)) {
+    if (!req.actor.isInstanceAdmin && !allowedCompanies.includes(companyId)) {
       throw forbidden("User does not have access to this company");
     }
     const method = typeof req.method === "string" ? req.method.toUpperCase() : "GET";
