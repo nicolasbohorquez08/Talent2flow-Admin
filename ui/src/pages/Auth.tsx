@@ -10,16 +10,34 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 type AuthMode = "sign_in" | "sign_up";
 
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  user_not_provisioned: "Your user has not been set up in Talent2flow yet. Contact your administrator to get access.",
+  saml_init: "Could not start the Microsoft sign-in. Please try again.",
+  saml_callback: "The Microsoft response could not be processed. Contact your administrator.",
+  saml_processing: "Something went wrong while signing you in. Contact your administrator.",
+};
+
 export function AuthPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mode, setMode] = useState<AuthMode>("sign_in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    () => SSO_ERROR_MESSAGES[searchParams.get("error") ?? ""] ?? null,
+  );
   const errorId = "auth-error";
+
+  // Limpia el parametro ?error de la URL una vez leido, sin perder otros
+  // parametros (ej. ?next) que la pagina sigue necesitando.
+  useEffect(() => {
+    if (!searchParams.has("error")) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("error");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const nextPath = useMemo(
     () => searchParams.get("next") || getRememberedInvitePath() || "/",
@@ -199,19 +217,25 @@ export function AuthPage() {
             )}
           </form>
 
-          <div className="mt-5 text-sm text-muted-foreground">
-            {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
-            <button
-              type="button"
-              className="font-medium text-foreground underline underline-offset-2"
-              onClick={() => {
-                setError(null);
-                setMode(mode === "sign_in" ? "sign_up" : "sign_in");
-              }}
-            >
-              {mode === "sign_in" ? "Create one" : "Sign in"}
-            </button>
-          </div>
+          {/* Registro abierto deshabilitado (PAPERCLIP_AUTH_DISABLE_SIGN_UP): sin
+              punto de entrada a sign_up en la UI. Paperclip (public."user") es la
+              unica fuente de identidad; los usuarios nuevos se dan de alta con
+              scripts/provision-user.sql, no por auto-registro. */}
+          {mode === "sign_up" && (
+            <div className="mt-5 text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <button
+                type="button"
+                className="font-medium text-foreground underline underline-offset-2"
+                onClick={() => {
+                  setError(null);
+                  setMode("sign_in");
+                }}
+              >
+                Sign in
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

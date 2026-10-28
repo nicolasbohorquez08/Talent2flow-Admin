@@ -2,7 +2,7 @@ import { Router } from "express";
 import passport from "passport";
 import { Strategy, Profile } from "@node-saml/passport-saml";
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { createHmac } from "node:crypto";
 import { authUsers, authAccounts, authSessions } from "@paperclipai/db";
@@ -53,7 +53,7 @@ export function samlRoutes(db: Db): Router {
     "/saml/login",
     passport.authenticate("saml-admin", {
       session: false,
-      failureRedirect: "/?error=saml_init",
+      failureRedirect: "/auth?error=saml_init",
     })
   );
 
@@ -62,13 +62,12 @@ export function samlRoutes(db: Db): Router {
     "/saml/callback",
     passport.authenticate("saml-admin", {
       session: false,
-      failureRedirect: "/?error=saml_callback",
+      failureRedirect: "/auth?error=saml_callback",
     }),
     async (req, res) => {
       try {
         const profile = req.user as any;
         const email = profile.emailaddress || profile["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"] || profile.email;
-        let name = profile.displayname || profile["http://schemas.microsoft.com/identity/claims/displayname"] || profile.name || email;
         const nameID = profile.nameID || profile.nameId;
         const sessionIndex = profile.sessionIndex;
 
@@ -76,24 +75,22 @@ export function samlRoutes(db: Db): Router {
           throw new Error("SAML Assertion does not contain an email");
         }
 
-        // Buscar el usuario por email
-        let users = await db.select().from(authUsers).where(eq(authUsers.email, email)).limit(1);
-        let user = users[0];
-
-        const now = new Date();
+        // Paperclip (public."user") es la unica fuente de identidad: si el
+        // correo no existe aqui, no se crea nada y se rechaza el acceso.
+        const emailNorm = String(email).trim().toLowerCase();
+        const users = await db
+          .select()
+          .from(authUsers)
+          .where(sql`lower(${authUsers.email}) = ${emailNorm}`)
+          .limit(1);
+        const user = users[0];
 
         if (!user) {
-          // Autoprovisionamiento
-          const userId = crypto.randomUUID();
-          user = (await db.insert(authUsers).values({
-            id: userId,
-            email,
-            name,
-            createdAt: now,
-            updatedAt: now,
-            emailVerified: true,
-          }).returning())[0];
+          console.warn(`[SAML] Acceso denegado: ${emailNorm} no existe en Paperclip (user_not_provisioned)`);
+          return res.redirect("/auth?error=user_not_provisioned");
         }
+
+        const now = new Date();
 
         // Buscar cuenta vinculada
         let accounts = await db.select().from(authAccounts).where(
@@ -161,7 +158,7 @@ export function samlRoutes(db: Db): Router {
         res.redirect("/");
       } catch (error) {
         console.error("SAML Callback Error:", error);
-        res.redirect("/?error=saml_processing");
+        res.redirect("/auth?error=saml_processing");
       }
     }
   );
