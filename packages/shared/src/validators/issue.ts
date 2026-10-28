@@ -387,6 +387,13 @@ const createIssueBaseSchema = z.object({
   priority: z.enum(ISSUE_PRIORITIES).optional().default("medium"),
   assigneeAgentId: z.string().uuid().optional().nullable(),
   assigneeUserId: z.string().optional().nullable(),
+  // Solo tiene efecto para actores que no son "user" (ej. una integracion
+  // con API key de agente, como el chat de Talent2flow-App-Back): permite
+  // atribuir la tarea a un humano sin que el actor HTTP sea ese humano.
+  // El route handler valida que tenga membresia en la company antes de
+  // usarlo (ver server/src/routes/issues.ts). Para actores "user"/"board"
+  // se ignora: siempre se usa el id del propio actor autenticado.
+  createdByUserId: z.string().optional().nullable(),
   requestDepth: issueRequestDepthInputSchema.optional().default(0),
   billingCode: z.string().optional().nullable(),
   assigneeAdapterOverrides: issueAssigneeAdapterOverridesSchema.optional().nullable(),

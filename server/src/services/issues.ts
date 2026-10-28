@@ -256,6 +256,8 @@ export interface IssueFilters {
   assigneeAgentId?: string | null;
   participantAgentId?: string;
   assigneeUserId?: string;
+  /** Filtra por quien pidio la tarea (issues.createdByUserId), no por el asignado. */
+  createdByUserId?: string;
   touchedByUserId?: string;
   inboxArchivedByUserId?: string;
   unreadForUserId?: string;
@@ -4225,6 +4227,9 @@ export function issueService(db: Db) {
       }
       if (filters?.assigneeUserId) {
         conditions.push(eq(issues.assigneeUserId, filters.assigneeUserId));
+      }
+      if (filters?.createdByUserId) {
+        conditions.push(eq(issues.createdByUserId, filters.createdByUserId));
       }
       if (touchedByUserId) {
         conditions.push(touchedByUserCondition(companyId, touchedByUserId));

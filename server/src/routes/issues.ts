@@ -7,6 +7,7 @@ import type { Db } from "@paperclipai/db";
 import {
   activityLog,
   agents,
+  companyMemberships,
   documents,
   executionWorkspaces,
   heartbeatRuns,
@@ -1934,6 +1935,41 @@ export function issueRoutes(
     throw forbidden(decision.explanation);
   }
 
+  /**
+   * Resuelve el override de `createdByUserId` que puede mandar un actor no-"user"
+   * (ej. la API key de agente que usa el chat de Talent2flow-App-Back) para
+   * atribuir la tarea al humano que la pidio, aunque el actor HTTP sea la
+   * integracion. Un actor "user"/"board" siempre se atribuye a si mismo (ver
+   * el llamado a svc.create mas abajo) y este override se ignora para ellos.
+   * Si el userId indicado no tiene membresia activa en la company, rechaza
+   * en vez de ignorar en silencio (evita enmascarar un bug o una suplantacion).
+   */
+  async function resolveCreatedByUserIdOverride(
+    req: Request,
+    companyId: string,
+    rawCreatedByUserId: unknown,
+  ): Promise<string | null> {
+    if (req.actor.type !== "agent" || typeof rawCreatedByUserId !== "string" || !rawCreatedByUserId) {
+      return null;
+    }
+    const membership = await db
+      .select({ id: companyMemberships.id })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalId, rawCreatedByUserId),
+          eq(companyMemberships.status, "active"),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!membership) {
+      throw forbidden(`createdByUserId ${rawCreatedByUserId} no tiene membresia activa en la company`);
+    }
+    return rawCreatedByUserId;
+  }
+
   function isTaskBridgeKeyActor(req: Request) {
     return req.actor.type === "agent" && req.actor.source === "agent_key" && req.actor.keyScope?.kind === "task_bridge";
   }
@@ -3038,6 +3074,7 @@ export function issueRoutes(
     const touchedByUserFilterRaw = req.query.touchedByUserId as string | undefined;
     const inboxArchivedByUserFilterRaw = req.query.inboxArchivedByUserId as string | undefined;
     const unreadForUserFilterRaw = req.query.unreadForUserId as string | undefined;
+    const createdByUserFilterRaw = req.query.createdByUserId as string | undefined;
     const assigneeUserId =
       assigneeUserFilterRaw === "me" && req.actor.type === "board"
         ? req.actor.userId
@@ -3054,6 +3091,10 @@ export function issueRoutes(
       unreadForUserFilterRaw === "me" && req.actor.type === "board"
         ? req.actor.userId
         : unreadForUserFilterRaw;
+    const createdByUserId =
+      createdByUserFilterRaw === "me" && req.actor.type === "board"
+        ? req.actor.userId
+        : createdByUserFilterRaw;
     const rawLimit = req.query.limit as string | undefined;
     const parsedLimit = rawLimit !== undefined && /^\d+$/.test(rawLimit)
       ? Number.parseInt(rawLimit, 10)
@@ -3084,6 +3125,10 @@ export function issueRoutes(
     }
     if (unreadForUserFilterRaw === "me" && (!unreadForUserId || req.actor.type !== "board")) {
       res.status(403).json({ error: "unreadForUserId=me requires board authentication" });
+      return;
+    }
+    if (createdByUserFilterRaw === "me" && (!createdByUserId || req.actor.type !== "board")) {
+      res.status(403).json({ error: "createdByUserId=me requires board authentication" });
       return;
     }
     if (attention !== undefined && attention !== "blocked") {
@@ -3135,6 +3180,7 @@ export function issueRoutes(
       assigneeAgentId,
       participantAgentId: req.query.participantAgentId as string | undefined,
       assigneeUserId,
+      createdByUserId,
       touchedByUserId,
       inboxArchivedByUserId,
       unreadForUserId,
@@ -5214,6 +5260,11 @@ export function issueRoutes(
       actor.actorType,
     );
     await assertCanManageIssueMonitor(access, req, companyId, createBody.assigneeAgentId ?? null, Boolean(executionPolicy?.monitor));
+    const createdByUserIdOverride = await resolveCreatedByUserIdOverride(
+      req,
+      companyId,
+      rawCreateBody.createdByUserId,
+    );
     const issueId = randomUUID();
     const sourceTrust = await sourceTrustForActorWrite({
       id: issueId,
@@ -5228,7 +5279,7 @@ export function issueRoutes(
       executionPolicy,
       ...(sourceTrust ? { sourceTrust } : {}),
       createdByAgentId: actor.agentId,
-      createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+      createdByUserId: actor.actorType === "user" ? actor.actorId : createdByUserIdOverride,
       watchdogActorRunId: actor.runId,
     });
     await issueReferencesSvc.syncIssue(issue.id);
