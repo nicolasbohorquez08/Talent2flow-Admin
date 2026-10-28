@@ -454,7 +454,9 @@ export const createIssueLabelSchema = z.object({
 
 export type CreateIssueLabel = z.infer<typeof createIssueLabelSchema>;
 
-export const updateIssueSchema = createIssueBaseSchema.omit({ watchdog: true }).partial().extend({
+// createdByUserId no es editable: solo se fija al crear (con validacion de membresia en
+// routes/issues.ts). Si quedara aqui, PATCH /issues/:id lo copiaria tal cual a la fila.
+export const updateIssueSchema = createIssueBaseSchema.omit({ watchdog: true, createdByUserId: true }).partial().extend({
   requestDepth: issueRequestDepthInputSchema.optional(),
   assigneeAgentId: z.string().trim().min(1).optional().nullable(),
   comment: multilineTextSchema.pipe(z.string().min(1)).optional(),
